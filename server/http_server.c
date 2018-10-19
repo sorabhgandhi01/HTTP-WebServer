@@ -19,25 +19,20 @@ void print_error(char *msg)
 	perror(msg);
 	exit(EXIT_FAILURE);
 }
-/*
-void http_resp(char *msg, char *f_type, char *f_name)
+
+void http_resp(char *msg, ssize_t f_size, char *f_type, char *f_name)
 {
-	memset(msg, 0, sizeof(msg));
-	snprintf(msg, sizeof(msg), "HTTP/1.1 200 OK\r\n""Content-Type: %s; charset=UTF-8\r\n\r\n"
-								"<!DOCTYPE html>\r\n"
-								"<html><head><title>GET Response</title>\r\n"
-								"<img src=\"%s\"></html>\r\n", f_type, f_name);
-}*/
+	snprintf(msg, 512, "HTTP/1.1 200 OK\r\n""Content-Type: %s\r\n\r\n"
+								"Content-Length: %ld\r\n\r\n", f_type, f_size);
+}
 
 void get_url_components(char *url, char *f_name, char *f_type)
 {
 	char type[5];
 	int ptr = strlen(url);
 	int i = 0, j = 0;
-/*
-	memset(f_name, 0, sizeof(f_name));
-	memset(f_type, 0, sizeof(f_type));
-	memset(type, 0, sizeof(type));*/
+	
+	memset(type, 0, sizeof(type));
 
 	while (url[ptr] != '.') ptr--;
 
@@ -46,6 +41,7 @@ void get_url_components(char *url, char *f_name, char *f_type)
         type[j] = url[i];
 		j++;
     }
+	type[j] = '\0';
 	
 	while (url[ptr] != '/') ptr--;
 
@@ -56,6 +52,12 @@ void get_url_components(char *url, char *f_name, char *f_type)
 		j++;
 	}
 
+	if (strcmp(type, "js") == 0) {
+			strcpy(f_type, "css/");
+            strcat(f_type, type);
+	}
+	else
+{
 	switch (type[0])
 	{
 		case 'h':
@@ -99,12 +101,15 @@ void get_url_components(char *url, char *f_name, char *f_type)
             break;
 	}
 }
+}
 
 
 int main(int argc, char **argv)
 {
 	struct sockaddr_in server, client;
+	struct stat st;
 	char r_buffer[MAX_BUF_SIZE];
+	char s_buffer[512];
 	char method[10];
 	char url[30];
 	char path[35];
@@ -113,6 +118,8 @@ int main(int argc, char **argv)
 	char f_name[30];
 	char *error_msg = "<!DOCTYPE html><html><title>500 Internal Server Error</title>""<pre><h1></h1></pre>""</html>\r\n";
 	ssize_t length;
+	ssize_t f_size;
+	FILE *fptr;
 	int sfd, cfd;
 	int child_pid = 0;
 	int rbytes;
@@ -160,7 +167,9 @@ int main(int argc, char **argv)
 
 		if (child_pid == 0)
 		{
+			/*Clear all the buffer*/
 			memset(r_buffer, 0, sizeof(r_buffer));
+			memset(s_buffer, 0, sizeof(s_buffer));
 			memset(method, 0, sizeof(method));
 			memset(url, 0, sizeof(url));
 			memset(path, 0, sizeof(path));
@@ -174,25 +183,27 @@ int main(int argc, char **argv)
 			if (rbytes < 0) {
 				send(cfd, error_msg, strlen(error_msg), 0);
 				close(cfd);
-				exit(EXIT_FAILURE);
+				exit(0);
 			}
 
 			sscanf(r_buffer, "%s %s %s", method, url, version);
-
+			printf("%s\n\n", r_buffer);
 			printf("Method: %s\nPath: %s\nVersion: %s\n", method, url, version);
 
+			/*Check for inappropriate method*/
 			if ((strcmp(method, "GET") != 0) && (strcmp(method, "POST") != 0) && (strcmp(method, "HEAD") != 0))
 			{
 				send(cfd, error_msg, strlen(error_msg), 0);
                 close(cfd);
-                exit(EXIT_FAILURE);
+                exit(0);
 			}
 
+			/*Check for inappropriate version*/
 			if ((strcmp(version, "HTTP/1.1") != 0) && (strcmp(version, "HTTP/1.0") != 0))
 			{
 				send(cfd, error_msg, strlen(error_msg), 0);
                 close(cfd);
-                exit(EXIT_FAILURE);
+                exit(0);
 			}
 
 			strcpy(path, "./www");
@@ -206,25 +217,37 @@ int main(int argc, char **argv)
 				strcat(path, url);
 			}
 			printf("Path -> %s\n", path);
-			get_url_components(path, f_name, f_type);
 
-			printf("Path -> %s	file_name -> %s	file_type -> %s\n",path, f_name, f_type); 
-
-/*			if (access(path, R_OK) != 0)
+			/*Check for inappropriate URL*/
+			if (access(path, F_OK) != 0)
 			{
 				send(cfd, error_msg, strlen(error_msg), 0);
                 close(cfd);
-                exit(EXIT_FAILURE);
+                exit(0);
 			}
-*/
-
-/*
-			switch(method)
+			
+			/*--------------------------------GET Request------------------------------*/
+			if (strcmp(method, "GET") == 0)
 			{
-				case "GET"
-*/
+				get_url_components(path, f_name, f_type);
+				stat(path, &st);
+				f_size = st.st_size;
+				printf("Path -> %s    file_name -> %s file_type -> %s	fs -> %ld\n",path, f_name, f_type, f_size); 
 
-
+				http_resp(s_buffer, f_size, f_type, f_name);
+				printf("s_buffer --> %s\n", s_buffer);
+				
+				send(cfd, s_buffer, strlen(s_buffer), 0);
+				int nsize;
+				char buffer[f_size];
+				fptr = fopen(path, "r");
+				//while (!feof(fptr))
+				//{
+					nsize = fread(buffer, 1, f_size, fptr);
+					send(cfd, buffer, nsize, 0);
+				//}
+				fclose(fptr);
+			}
 		}
 		
 		//close(cfd);
