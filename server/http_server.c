@@ -22,17 +22,17 @@ void print_error(char *msg)
 	exit(EXIT_FAILURE);
 }
 
-void http_ok_resp(char *msg, ssize_t f_size, char *f_type, char *conn_status)
+void http_ok_resp(char *msg, char *version, ssize_t f_size, char *f_type, char *conn_status)
 {
-	snprintf(msg, 512, "HTTP/1.1 200 OK\r\n""Content-Type: %s\r\n""Connection: %s\r\n""Content-Length: %ld\r\n\r\n", f_type, conn_status, f_size);
+	snprintf(msg, 512, "%s 200 OK\r\n""Content-Type: %s\r\n""Connection: %s\r\n""Content-Length: %ld\r\n\r\n", version, f_type, conn_status, f_size);
 }
 
-void http_error_resp(char *msg, char *conn_status, int c_size)
+void http_error_resp(char *msg, char *version, char *conn_status, int c_size)
 {
 	if (conn_status != NULL)
-		snprintf(msg, 512, "HTTP/1.1 500 Internal Server Error\r\n""Content-Type: html\r\n""Connection: %s\r\n""Content-Length: %d\r\n\r\n", conn_status, c_size);
+		snprintf(msg, 512, "%s 500 Internal Server Error\r\n""Content-Type: html\r\n""Connection: %s\r\n""Content-Length: %d\r\n\r\n", version, conn_status, c_size);
 	else
-		snprintf(msg, 512, "HTTP/1.1 500 Internal Server Error\r\n""Content-Type: html\r\n""Content-Length: %d\r\n\r\n", c_size);
+		snprintf(msg, 512, "%s 500 Internal Server Error\r\n""Content-Type: html\r\n""Content-Length: %d\r\n\r\n", version, c_size);
 }
 
 void get_url_components(char *url, char *f_name, char *f_type)
@@ -62,59 +62,57 @@ void get_url_components(char *url, char *f_name, char *f_type)
 	}
 
 	if (strcmp(type, "js") == 0) {
-			strcpy(f_type, "css/");
-            strcat(f_type, type);
+			strcpy(f_type, "application/javascript");
 	}
 	else
-{
-	switch (type[0])
 	{
-		case 'h':
-			strcpy(f_type, "text/");
-			strcat(f_type, type);
-			break;
+		switch (type[0])
+		{
+			case 'h':
+				strcpy(f_type, "text/");
+				strcat(f_type, type);
+				break;
 
-		case 't':
-			strcpy(f_type, "text/");
-            strcat(f_type, type);
+			case 't':
+				strcpy(f_type, "text/plain");
+				break;
+
+			case 'p':
+				strcpy(f_type, "image/");
+				strcat(f_type, type);
+				break;
+
+			case 'g':
+				strcpy(f_type, "image/");
+				strcat(f_type, type);
+				break;
+
+			case 'j':
+				strcpy(f_type, "image/");
+				strcat(f_type, type);
+				break;
+
+			case 'c':
+				strcpy(f_type, "text/");
+				strcat(f_type, type);
+				break;
+
+			default:
+				strcpy(f_type, "text/");
+				strcat(f_type, "html");
             break;
-
-		case 'p':
-			strcpy(f_type, "image/");
-            strcat(f_type, type);
-            break;
-
-		case 'g':
-			strcpy(f_type, "image/");
-            strcat(f_type, type);
-            break;
-
-		case 'j':
-			strcpy(f_type, "image/");
-            strcat(f_type, type);
-            break;
-
-		case 'c':
-			strcpy(f_type, "text/");
-            strcat(f_type, type);
-            break;
-
-		/*case "js":
-			strcpy(f_type, "css/");
-            strcat(f_type, type);
-            break;*/
-
-		default:
-			strcpy(f_type, "text/");
-            strcat(f_type, "html");
-            break;
+		}
 	}
-}
 }
 
 
 int main(int argc, char **argv)
 {
+	if ((argc < 2) || (argc > 2)) {
+		printf("Usage --> ./[%s] [Port Number]\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
 	struct sockaddr_in server, client;
 	struct stat st;
 	struct timeval timeout;
@@ -149,7 +147,7 @@ int main(int argc, char **argv)
 
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(8888);
+    server.sin_port = htons(atoi(argv[1]));
 
 	if (bind(sfd, (struct sockaddr *) &server, sizeof(server)) == -1)
 		print_error("Server: bind");
@@ -221,9 +219,9 @@ int main(int argc, char **argv)
 					c_size = strlen(error_msg);
 
 					if (conn_status)
-						http_error_resp(e_buffer, "keep-alive", c_size);
+						http_error_resp(e_buffer, version, "keep-alive", c_size);
 					else
-						http_error_resp(e_buffer, "Close", c_size);
+						http_error_resp(e_buffer, version, "Close", c_size);
 
 					send(cfd, e_buffer, strlen(e_buffer), 0);
 					send(cfd, error_msg, strlen(error_msg), 0);
@@ -244,9 +242,9 @@ int main(int argc, char **argv)
 					c_size = strlen(error_msg);
 
 					if (conn_status)
-						http_error_resp(e_buffer, "keep-alive", c_size);
+						http_error_resp(e_buffer, version, "keep-alive", c_size);
 					else
-						http_error_resp(e_buffer, "Close", c_size);
+						http_error_resp(e_buffer, version, "Close", c_size);
 
 					send(cfd, e_buffer, strlen(e_buffer), 0);
 					send(cfd, error_msg, strlen(error_msg), 0);
@@ -278,9 +276,9 @@ int main(int argc, char **argv)
 					c_size = strlen(error_msg);
 
 					if (conn_status)
-						http_error_resp(e_buffer, "keep-alive", c_size);
+						http_error_resp(e_buffer, version, "keep-alive", c_size);
 					else
-						http_error_resp(e_buffer, "Close", c_size);
+						http_error_resp(e_buffer, version, "Close", c_size);
 
 					send(cfd, e_buffer, strlen(e_buffer), 0);
 					send(cfd, error_msg, strlen(error_msg), 0);
@@ -305,11 +303,11 @@ int main(int argc, char **argv)
 					printf("Path -> %s    file_name -> %s file_type -> %s	fs -> %ld\n",path, f_name, f_type, f_size); 
 
 					if (conn_status)
-						http_ok_resp(s_buffer, f_size, f_type, "keep-alive");
+						http_ok_resp(s_buffer, version, f_size, f_type, "keep-alive");
 					else
-						http_ok_resp(s_buffer, f_size, f_type, "Close");
+						http_ok_resp(s_buffer, version, f_size, f_type, "Close");
 					
-					printf("s_buffer --> %s\n", s_buffer);
+					printf("\n%s\n", s_buffer);
 					send(cfd, s_buffer, strlen(s_buffer), 0);
 
 					int nsize;
