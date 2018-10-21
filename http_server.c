@@ -32,7 +32,19 @@ void http_error_resp(char *msg, char *version, char *conn_status, int c_size)
 	if (conn_status != NULL)
 		snprintf(msg, 512, "%s 500 Internal Server Error\r\n""Content-Type: html\r\n""Connection: %s\r\n""Content-Length: %d\r\n\r\n", version, conn_status, c_size);
 	else
-		snprintf(msg, 512, "%s 500 Internal Server Error\r\n""Content-Type: html\r\n""Content-Length: %d\r\n\r\n", version, c_size);
+		snprintf(msg, 512, "%s 500 Internal Server Error\r\n""Content-Type: html\r\n""Connection: Close\r\n""Content-Length: %d\r\n\r\n", version, c_size);
+}
+
+void get_post_data(char *msg, char *post_data)
+{
+	if (msg != NULL)
+	{
+		char *ptr = strrchr(msg, '\n');
+		ptr++;
+		strcpy(post_data, ptr);
+	}
+	else
+		printf("Empty input buffer\n");
 }
 
 void get_url_components(char *url, char *f_name, char *f_type)
@@ -120,6 +132,7 @@ int main(int argc, char **argv)
 	char r_buffer[MAX_BUF_SIZE];		//Stores the CLient Response
 	char s_buffer[512];					//Stores HTTP_Ok_Response
 	char e_buffer[512];					//Stores HTTP_Error_Response
+	char post_data[512];				//Stores Content of post data
 	char method[10];					//Stores the Requested HTTP Method
 	char url[30];						//Stores the Requested File Path
 	char path[35];
@@ -135,7 +148,7 @@ int main(int argc, char **argv)
 
 	int sfd, cfd;
 	int child_pid = 0;
-	int rbytes;
+	//int rbytes;
 	int option = 1;
 	int c_size;
 
@@ -166,7 +179,7 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		printf("Accepted a new connection = %d\n", cfd);
+		printf("Accepted a new connection = %d\n", client.sin_port);
 
 		child_pid = fork();
 		printf("Created a child process --> %d\n", child_pid);
@@ -202,7 +215,7 @@ int main(int argc, char **argv)
 
 				if (conn_status)
 				{
-					//printf("-----------> Config timeout\n");
+					printf("%s\n", conn_status);
 					timeout.tv_sec = t_out;
 					setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (const char *) &timeout, sizeof(struct timeval));
 				}
@@ -216,6 +229,7 @@ int main(int argc, char **argv)
 				/*Check for inappropriate method*/
 				if ((strcmp(method, "GET") != 0) && (strcmp(method, "POST") != 0) && (strcmp(method, "HEAD") != 0))
 				{
+					printf("Inappropriate Method\n");
 					c_size = strlen(error_msg);
 
 					if (conn_status)
@@ -239,6 +253,7 @@ int main(int argc, char **argv)
 					/*Check for inappropriate version*/
 				if ((strcmp(version, "HTTP/1.1") != 0) && (strcmp(version, "HTTP/1.0") != 0))
 				{
+					printf("Inappropriate Version\n");
 					c_size = strlen(error_msg);
 
 					if (conn_status)
@@ -273,6 +288,7 @@ int main(int argc, char **argv)
 				/*Check for inappropriate URL*/
 				if (access(path, F_OK) != 0)
 				{
+					printf("Inappropriate URL\n");
 					c_size = strlen(error_msg);
 
 					if (conn_status)
@@ -296,6 +312,7 @@ int main(int argc, char **argv)
 				/*--------------------------------GET Request------------------------------*/
 				if (strcmp(method, "GET") == 0)
 				{
+					printf("Processing the GET request\n");
 					memset(s_buffer, 0, sizeof(s_buffer));
 					get_url_components(path, f_name, f_type);
 					stat(path, &st);
@@ -326,6 +343,52 @@ int main(int argc, char **argv)
 						printf("Closing Socket %d\n", client.sin_port);
 						close(cfd);
 						exit(0);
+					}
+				}
+
+				/*------------------------------POST Request-------------------------------*/
+				if (strcmp(method, "POST") == 0)
+				{
+					printf("Processing Post Request\n");
+					memset(s_buffer, 0, sizeof(s_buffer));
+					get_url_components(path, f_name, f_type);
+					get_post_data(r_buffer, post_data);
+					printf("%s\n", post_data);
+
+					stat(path, &st);
+					f_size = st.st_size;
+					printf("Path -> %s    file_name -> %s file_type -> %s   fs -> %ld\n",path, f_name, f_type, (f_size + strlen(post_data)));
+
+                    if (conn_status)
+                        http_ok_resp(s_buffer, version, (f_size + strlen(post_data)), f_type, "keep-alive");
+                    else
+                        http_ok_resp(s_buffer, version, (f_size + strlen(post_data)), f_type, "Close");
+
+                    printf("\n%s\n", s_buffer);
+                    send(cfd, s_buffer, strlen(s_buffer), 0);
+
+					char send_msg[512];
+					snprintf(send_msg, 512, "<html><body><pre><h1>%s</h1></pre>", post_data); 
+                    printf("\n%s\n", send_msg);
+					send(cfd, send_msg, strlen(send_msg), 0);
+
+					int nsize;
+                    char *buffer = (char *) malloc(f_size*sizeof(char));
+                    FILE *fptr;
+
+                    fptr = fopen(path, "r");
+                    nsize = fread(buffer, 1, f_size, fptr);
+					printf("%s\n", buffer);
+
+                    send(cfd, buffer, nsize, 0);
+
+                    fclose(fptr);
+                    free(buffer);
+
+					if (conn_status == NULL) {
+						printf("Closing Socket %d\n", client.sin_port);
+                        close(cfd);
+                        exit(0);
 					}
 				}
 			}
