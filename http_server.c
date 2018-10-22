@@ -16,17 +16,20 @@
 #define MAX_BUF_SIZE 1024
 #define t_out 10
 
+/*Function to print error message*/
 void print_error(char *msg)
 {
 	perror(msg);
 	exit(EXIT_FAILURE);
 }
 
+/*Function to build HTTP OK response for valid HTTP Request*/
 void http_ok_resp(char *msg, char *version, ssize_t f_size, char *f_type, char *conn_status)
 {
 	snprintf(msg, 512, "%s 200 OK\r\n""Content-Type: %s\r\n""Connection: %s\r\n""Content-Length: %ld\r\n\r\n", version, f_type, conn_status, f_size);
 }
 
+/*Function to build HTTP Error response for invalid HTTP Request*/
 void http_error_resp(char *msg, char *version, char *conn_status, int c_size)
 {
 	if (conn_status != NULL)
@@ -35,6 +38,7 @@ void http_error_resp(char *msg, char *version, char *conn_status, int c_size)
 		snprintf(msg, 512, "%s 500 Internal Server Error\r\n""Content-Type: html\r\n""Connection: Close\r\n""Content-Length: %d\r\n\r\n", version, c_size);
 }
 
+/*Function to extract data from HTTP POST Request*/
 void get_post_data(char *msg, char *post_data)
 {
 	if (msg != NULL)
@@ -47,6 +51,7 @@ void get_post_data(char *msg, char *post_data)
 		printf("Empty input buffer\n");
 }
 
+/*Function to extract file name and file type from HTTP URL Request*/
 void get_url_components(char *url, char *f_name, char *f_type)
 {
 	char type[5];
@@ -152,22 +157,24 @@ int main(int argc, char **argv)
 	int option = 1;
 	int c_size;
 
-	sfd = socket(AF_INET, SOCK_STREAM, 0);
+	sfd = socket(AF_INET, SOCK_STREAM, 0);		//Create a Socket
 	if (sfd == -1)
 		print_error("Server: socket");
 
-	setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+	setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));		//Set Reuseable address option in socket
 
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = INADDR_ANY;
     server.sin_port = htons(atoi(argv[1]));
 
+	/*Bind the socket to the defined port*/
 	if (bind(sfd, (struct sockaddr *) &server, sizeof(server)) == -1)
 		print_error("Server: bind");
 
 	if (listen(sfd, 5) == -1)
 		print_error("Server: listen");
 
+	/*Continuously Look for the incomming connections*/
 	for (;;)
 	{	
 		length = sizeof(client);
@@ -180,7 +187,8 @@ int main(int argc, char **argv)
 		}
 
 		printf("Accepted a new connection = %d\n", client.sin_port);
-
+		
+		/*Create Child process*/
 		child_pid = fork();
 		printf("Created a child process --> %d\n", child_pid);
 		
@@ -190,9 +198,10 @@ int main(int argc, char **argv)
 		if (child_pid > 0)
 		{
 			close(cfd);
-			waitpid(0, NULL, WNOHANG);
+			waitpid(0, NULL, WNOHANG);	//Wait for state change of the child process
 		}
 
+		/*Service the request in Child Process*/
 		if (child_pid == 0)
 		{
 			printf("In the child process\n");
@@ -213,6 +222,7 @@ int main(int argc, char **argv)
 
 				char *conn_status = strstr(r_buffer, "Connection: keep-alive");
 
+				/*Check for connection status and set the timeout period*/
 				if (conn_status)
 				{
 					printf("%s\n", conn_status);
